@@ -7,8 +7,8 @@ import { createTelegramRetryRunner } from "../infra/retry-policy.js";
 import { mediaKindFromMime } from "../media/constants.js";
 import { isGifMedia } from "../media/mime.js";
 import { loadWebMedia } from "../web/media.js";
-import { markdownToTelegramHtml } from "./format.js";
 import { resolveTelegramAccount } from "./accounts.js";
+import { markdownToTelegramHtml } from "./format.js";
 
 type TelegramSendOpts = {
   token?: string;
