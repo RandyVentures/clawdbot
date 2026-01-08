@@ -8,6 +8,7 @@ import { createTelegramRetryRunner } from "../infra/retry-policy.js";
 import { mediaKindFromMime } from "../media/constants.js";
 import { isGifMedia } from "../media/mime.js";
 import { loadWebMedia } from "../web/media.js";
+import { markdownToTelegramHtml } from "./format.js";
 import { resolveTelegramToken } from "./token.js";
 
 type TelegramSendOpts = {
@@ -183,10 +184,11 @@ export async function sendMessageTelegram(
   if (!text || !text.trim()) {
     throw new Error("Message must be non-empty for Telegram sends");
   }
+  const htmlText = markdownToTelegramHtml(text);
   const res = await request(
     () =>
-      api.sendMessage(chatId, text, {
-        parse_mode: "Markdown",
+      api.sendMessage(chatId, htmlText, {
+        parse_mode: "HTML",
         ...threadParams,
       }),
     "message",
