@@ -66,7 +66,6 @@ import {
   buildBootstrapContextFiles,
   classifyFailoverReason,
   type EmbeddedContextFile,
-  ensureSessionHeader,
   formatAssistantErrorText,
   isAuthAssistantError,
   isCloudCodeAssistFormatError,
@@ -453,6 +452,27 @@ async function prewarmSessionFile(sessionFile: string): Promise<void> {
   }
 }
 
+async function didSessionFileExist(sessionFile: string): Promise<boolean> {
+  try {
+    await fs.stat(sessionFile);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function alignSessionManagerIdForNewFile(
+  sessionManager: SessionManager,
+  sessionId: string,
+  sessionFileExisted: boolean,
+): void {
+  if (sessionFileExisted) return;
+  // Keep the caller's sessionId without pre-creating a header file (which drops the first user turn).
+  const header = sessionManager.getHeader();
+  if (header) header.id = sessionId;
+  (sessionManager as unknown as { sessionId?: string }).sessionId = sessionId;
+}
+
 const isAbortError = (err: unknown): boolean => {
   if (!err || typeof err !== "object") return false;
   const name = "name" in err ? String(err.name) : "";
@@ -806,11 +826,7 @@ export async function compactEmbeddedPiSession(params: {
           : sandbox.workspaceDir
         : resolvedWorkspace;
       await fs.mkdir(effectiveWorkspace, { recursive: true });
-      await ensureSessionHeader({
-        sessionFile: params.sessionFile,
-        sessionId: params.sessionId,
-        cwd: effectiveWorkspace,
-      });
+      const sessionFileExisted = await didSessionFileExist(params.sessionFile);
 
       let restoreSkillEnv: (() => void) | undefined;
       process.chdir(effectiveWorkspace);
@@ -915,6 +931,11 @@ export async function compactEmbeddedPiSession(params: {
         // Pre-warm session file to bring it into OS page cache
         await prewarmSessionFile(params.sessionFile);
         const sessionManager = SessionManager.open(params.sessionFile);
+        alignSessionManagerIdForNewFile(
+          sessionManager,
+          params.sessionId,
+          sessionFileExisted,
+        );
         trackSessionManagerAccess(params.sessionFile);
         const settingsManager = SettingsManager.create(
           effectiveWorkspace,
@@ -1188,11 +1209,9 @@ export async function runEmbeddedPiAgent(params: {
             : sandbox.workspaceDir
           : resolvedWorkspace;
         await fs.mkdir(effectiveWorkspace, { recursive: true });
-        await ensureSessionHeader({
-          sessionFile: params.sessionFile,
-          sessionId: params.sessionId,
-          cwd: effectiveWorkspace,
-        });
+        const sessionFileExisted = await didSessionFileExist(
+          params.sessionFile,
+        );
 
         let restoreSkillEnv: (() => void) | undefined;
         process.chdir(effectiveWorkspace);
@@ -1289,6 +1308,11 @@ export async function runEmbeddedPiAgent(params: {
           // Pre-warm session file to bring it into OS page cache
           await prewarmSessionFile(params.sessionFile);
           const sessionManager = SessionManager.open(params.sessionFile);
+          alignSessionManagerIdForNewFile(
+            sessionManager,
+            params.sessionId,
+            sessionFileExisted,
+          );
           trackSessionManagerAccess(params.sessionFile);
           const settingsManager = SettingsManager.create(
             effectiveWorkspace,

@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -5,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClawdbotConfig } from "../config/config.js";
 import { resolveSessionAgentIds } from "./agent-scope.js";
 import {
+  alignSessionManagerIdForNewFile,
   applyGoogleTurnOrderingFix,
   buildEmbeddedSandboxInfo,
   createSystemPromptOverride,
@@ -227,5 +232,43 @@ describe("applyGoogleTurnOrderingFix", () => {
     });
     expect(result.messages).toBe(input);
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("session persistence", () => {
+  it("persists the first telegram user message for new session files", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "clawdbot-telegram-session-"),
+    );
+    const sessionFile = path.join(root, "telegram.jsonl");
+    const sessionManager = SessionManager.open(sessionFile);
+    alignSessionManagerIdForNewFile(
+      sessionManager,
+      "telegram-session-1",
+      false,
+    );
+
+    sessionManager.appendMessage({
+      role: "user",
+      content: "first telegram message",
+      timestamp: Date.now(),
+    } as AgentMessage);
+    sessionManager.appendMessage({
+      role: "assistant",
+      content: "reply",
+      timestamp: Date.now(),
+    } as AgentMessage);
+
+    const lines = (await fs.readFile(sessionFile, "utf-8"))
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+    const entries = lines.map((line) => JSON.parse(line) as { type?: string });
+    const userEntry = entries.find(
+      (entry) =>
+        entry.type === "message" &&
+        (entry as { message?: { role?: string } }).message?.role === "user",
+    );
+
+    expect(userEntry).toBeTruthy();
   });
 });
